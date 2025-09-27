@@ -23,8 +23,6 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 import pdfplumber
 
 
-
-
 # In main.py and cardiology_ai.py
 from utils import search_similar_cases, fallback_text_search
 # Import OpenAI Agents SDK components (assumed to be available)
@@ -37,6 +35,7 @@ from medicura_agents.general_health_agent import create_general_health_agent
 from medicura_agents.medical_term_agent import create_medical_term_agent
 from medicura_agents.report_analyzer_agent import create_report_analyzer_agent
 from medicura_agents.about_agent import create_about_agent
+from medicura_agents.triage_agent import create_triage_agent
 
 
 from specialist_agents.cardiology_ai import create_cardiology_agent
@@ -45,7 +44,7 @@ from specialist_agents.neurology_ai import create_neurology_agent
 from specialist_agents.pulmonology_ai import create_pulmonology_agent
 from specialist_agents.ophthalmology_ai import create_ophthalmology_agent
 from specialist_agents.dental_ai import create_dental_agent
-from specialist_agents.allergy_immunology_ai import create_allergy_immunology_agent
+from specialist_agents.allergy_immunology_ai import create_allergy_immunology_age
 from specialist_agents.pediatrics_ai import create_pediatrics_agent
 from specialist_agents.orthopedics_ai import create_orthopedics_agent
 from specialist_agents.mental_health_ai import create_mental_health_agent
@@ -190,6 +189,7 @@ general_health_agent = create_general_health_agent(model)
 medical_term_agent = create_medical_term_agent(model)
 report_analyzer_agent = create_report_analyzer_agent(model)
 about_agent = create_about_agent(model)
+triage_agent = create_triage_agent(model)
 
 
 # Specialist agents
@@ -286,12 +286,32 @@ async def run_agent_with_thinking(agent: Agent, prompt: str, context: Dict[str, 
     """Run agent with enhanced thinking and robust error handling."""
     try:
         specialty = context.get("specialty", "general") if context else "general"
+        history = context.get("history", []) if context else []
+        
+        # Build conversation history context
+        history_context = ""
+        if history:
+            recent_history = history[-6:]  # Last 3 exchanges (6 messages)
+            history_context = "\n\nCONVERSATION HISTORY:\n"
+            for msg in recent_history:
+                role = "USER" if msg.get("role") == "user" else "ASSISTANT"
+                content = msg.get("content", "")
+                if role == "ASSISTANT":
+                    # Extract summary from JSON response for cleaner history
+                    try:
+                        parsed_content = json.loads(content)
+                        content = parsed_content.get("summary", content)[:200]
+                    except:
+                        content = content[:200]
+                history_context += f"{role}: {content}\n"
+            history_context += "\nPlease consider this conversation history when responding to provide continuity and context-aware answers.\n"
         
         # For drug-related queries, provide more specific context
         if specialty == "drug":
             thinking_prompt = f"""
             USER QUERY: {prompt}
             CONTEXT: This is a drug-related query. Please provide information about usage, dosage, precautions, and interactions.
+            {history_context}
             
             PLEASE PROVIDE A COMPREHENSIVE MEDICAL RESPONSE IN PURE JSON FORMAT ONLY.
             DO NOT INCLUDE ANY OTHER TEXT OUTSIDE THE JSON.
@@ -302,14 +322,26 @@ async def run_agent_with_thinking(agent: Agent, prompt: str, context: Dict[str, 
             USER QUERY: {prompt}
             CONTEXT: This is a symptom analysis query. Provide comprehensive information about 
             possible causes, self-care measures, when to seek help, and warning signs.
+            {history_context}
             
             RESPONSE FORMAT: Provide a comprehensive JSON response with detailed fields.
+            """
+
+        elif specialty == "triage":
+            thinking_prompt = f"""
+            USER QUERY: {prompt}
+            CONTEXT: This is a medical triage assessment. Analyze urgency, determine care routing, and provide clear recommendations.
+            {history_context}
+            
+            PLEASE PROVIDE A COMPREHENSIVE TRIAGE ASSESSMENT IN PURE JSON FORMAT ONLY.
+            DO NOT INCLUDE ANY OTHER TEXT OUTSIDE THE JSON.
             """
 
         else:
             thinking_prompt = f"""
             USER QUERY: {prompt}
             CONTEXT: {json.dumps(context) if context else 'No additional context'}
+            {history_context}
             
             PLEASE PROVIDE A COMPREHENSIVE MEDICAL RESPONSE IN PURE JSON FORMAT ONLY.
             DO NOT INCLUDE ANY OTHER TEXT OUTSIDE THE JSON.
@@ -488,7 +520,21 @@ class DrugInteractionRequest(BaseModel):
     
 class MedicalTermRequest(BaseModel):
     term: str = Field(..., min_length=1)
-    language: Optional[str] = "en"    
+    language: Optional[str] = "en"
+
+class TriageRequest(BaseModel):
+    chief_complaint: str = Field(..., min_length=1, max_length=500, description="Primary reason for seeking care")
+    symptoms: List[str] = Field(..., min_items=1, max_items=20, description="List of current symptoms")
+    duration: Optional[str] = Field(None, max_length=100, description="How long symptoms have been present")
+    severity: Optional[str] = Field(None, max_length=100, description="Severity level (mild/moderate/severe)")
+    age: Optional[int] = Field(None, ge=0, le=120, description="Patient age")
+    gender: Optional[str] = Field(None, max_length=20, description="Patient gender")
+    vital_signs: Optional[Dict[str, Any]] = Field(None, description="Available vital signs")
+    medical_history: Optional[List[str]] = Field(None, max_items=10, description="Relevant medical history")
+    current_medications: Optional[List[str]] = Field(None, max_items=20, description="Current medications")
+    pain_level: Optional[int] = Field(None, ge=0, le=10, description="Pain level on 1-10 scale")
+    additional_info: Optional[str] = Field(None, max_length=1000, description="Any additional relevant information")
+    session_id: Optional[str] = Field(None, max_length=100, description="Session ID for conversation history tracking")    
 
 # class ReportSummaryRequest(BaseModel):
 #     text: str = Field(..., min_length=1)
@@ -669,6 +715,72 @@ async def medical_term(request: MedicalTermRequest):
     except Exception as e:
         logger.error(f"Medical term error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to explain medical term")
+
+@app.post("/api/health/triage")
+async def triage_assessment(request: TriageRequest):
+    """Perform medical triage assessment to determine urgency and care routing."""
+    try:
+        # Generate or use provided session ID for history tracking
+        session_id = getattr(request, 'session_id', None) or str(uuid.uuid4())
+        history = load_history(session_id)
+        
+        # Build comprehensive prompt from request data
+        symptoms_str = ", ".join(request.symptoms)
+        prompt = f"""
+        TRIAGE ASSESSMENT REQUEST:
+        
+        Chief Complaint: {request.chief_complaint}
+        Symptoms: {symptoms_str}
+        Duration: {request.duration or 'Not specified'}
+        Severity: {request.severity or 'Not specified'}
+        """
+        
+        if request.age:
+            prompt += f"\nAge: {request.age} years"
+        if request.gender:
+            prompt += f"\nGender: {request.gender}"
+        if request.pain_level is not None:
+            prompt += f"\nPain Level: {request.pain_level}/10"
+        if request.vital_signs:
+            prompt += f"\nVital Signs: {request.vital_signs}"
+        if request.medical_history:
+            prompt += f"\nMedical History: {', '.join(request.medical_history)}"
+        if request.current_medications:
+            prompt += f"\nCurrent Medications: {', '.join(request.current_medications)}"
+        if request.additional_info:
+            prompt += f"\nAdditional Information: {request.additional_info}"
+        
+        prompt += "\n\nPlease perform a comprehensive triage assessment and provide urgency determination with routing recommendations."
+        
+        # Include history in context
+        context = {
+            "specialty": "triage",
+            "history": history,
+            "session_id": session_id
+        }
+        
+        # Call triage agent with history context
+        result = await run_agent_with_thinking(triage_agent, prompt, context)
+        
+        # Update history with triage assessment
+        history.extend([
+            {"role": "user", "content": f"Triage request: {request.chief_complaint}", "timestamp": datetime.now().isoformat()},
+            {"role": "assistant", "content": json.dumps(result), "timestamp": datetime.now().isoformat()}
+        ])
+        history = history[-20:]  # Keep last 20 messages
+        save_history(session_id, history)
+        
+        # Add session_id to response for client tracking
+        result["session_id"] = session_id
+        
+        # Log response safely
+        result_str = str(result) if not isinstance(result, str) else result
+        logger.info(f"Triage assessment raw response: {result_str[:200]}...")
+        
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Triage assessment error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to perform triage assessment")
 
 
 async def extract_pdf_text(file: UploadFile) -> str:
@@ -1081,6 +1193,7 @@ async def chatbot(request: ChatRequest):
         logger.info(f"Received query: {query_lower}")
        
         specialty_map = {
+            "triage": ["emergency", "urgent", "triage", "how urgent", "priority", "serious", "critical", "immediate care", "emergency room", "er", "911", "1122"],
             "symptom": ["symptom", "pain", "fever", "headache", "nausea", "ache", "hurt"],
             "drug": ["drug", "medication", "pill", "dose", "interaction", "side effect", "ibuprofen", "panadol", "paracetamol"],
             "medical_term": ["what is", "explain", "define", "meaning of"],
@@ -1113,6 +1226,7 @@ async def chatbot(request: ChatRequest):
                 
                 # Map specialties to agents
                 agent_mapping = {
+                    "triage": triage_agent,
                     "symptom": symptom_analyzer_agent,
                     "drug": drug_interaction_agent,
                     "medical_term": medical_term_agent,
@@ -1140,8 +1254,12 @@ async def chatbot(request: ChatRequest):
 
         logger.info(f"Final selected agent: {selected_specialty}")
 
-        # Run agent with thinking mode
-        context = {"specialty": selected_specialty}
+        # Run agent with thinking mode and conversation history
+        context = {
+            "specialty": selected_specialty,
+            "history": history,
+            "session_id": session_id
+        }
         result = await run_agent_with_thinking(selected_agent, request.message, context)
 
         # Update chat history
@@ -1301,6 +1419,81 @@ async def clear_session(request: ClearSessionRequest):
     except Exception as e:
         logger.error(f"Clear session error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to clear session")
+
+@app.get("/api/chatbot/session/{session_id}/history")
+async def get_session_history(session_id: str):
+    """Get conversation history for a specific session."""
+    try:
+        history = load_history(session_id)
+        
+        if not history:
+            return {
+                "session_id": session_id,
+                "history": [],
+                "message": "No history found for this session"
+            }
+        
+        # Format history for better readability
+        formatted_history = []
+        for msg in history:
+            formatted_msg = {
+                "role": msg.get("role"),
+                "timestamp": msg.get("timestamp"),
+                "content": msg.get("content")
+            }
+            
+            # If it's an assistant message, try to parse and summarize
+            if msg.get("role") == "assistant":
+                try:
+                    parsed_content = json.loads(msg.get("content", "{}"))
+                    formatted_msg["summary"] = parsed_content.get("summary", "")
+                    formatted_msg["triage_level"] = parsed_content.get("triage_level", "")
+                    formatted_msg["urgency_score"] = parsed_content.get("urgency_score", "")
+                except:
+                    pass
+            
+            formatted_history.append(formatted_msg)
+        
+        return {
+            "session_id": session_id,
+            "total_messages": len(history),
+            "history": formatted_history,
+            "success": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Get session history error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve session history")
+
+@app.get("/api/chatbot/sessions")
+async def get_all_sessions():
+    """Get list of all conversation sessions."""
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("SELECT session_id, last_updated FROM chat_sessions ORDER BY last_updated DESC LIMIT 50")
+            sessions = cur.fetchall()
+        conn.close()
+        
+        session_list = []
+        for session_id, last_updated in sessions:
+            # Get message count for each session
+            history = load_history(session_id)
+            session_list.append({
+                "session_id": session_id,
+                "last_updated": last_updated.isoformat() if last_updated else None,
+                "message_count": len(history)
+            })
+        
+        return {
+            "total_sessions": len(session_list),
+            "sessions": session_list,
+            "success": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Get all sessions error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve sessions")
 
 @app.get("/health")
 async def health_check():
