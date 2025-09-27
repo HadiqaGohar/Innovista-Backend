@@ -54,7 +54,7 @@ from specialist_agents.radiology_ai import create_radiology_agent
 from specialist_agents.infectious_disease_ai import create_infectious_disease_agent
 from specialist_agents.vaccination_advisor_ai import create_vaccination_advisor_agent
 from specialist_agents.drug_interaction_agent import create_drug_interaction_agent
-
+from booking_agent import book_appointment  # Add this import at the top
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -133,6 +133,25 @@ app = FastAPI(
 @app.get("/")
 def root():
     return {"message": "HG-Medicura-AI Backend is running 🚀"}
+
+# @app.post("/book")
+# def book(citizen_name: str, service: str, contact: str):
+#     form, confirmation = book_appointment(citizen_name, service, contact)
+#     return {"appointment": form, "confirmation": confirmation}
+
+@app.post("/book")
+def book_appointment_endpoint(citizen_name: str, service: str, contact: str):
+    """Book appointment endpoint"""
+    try:
+        form, confirmation = book_appointment(citizen_name, service, contact)
+        return {
+            "success": True,
+            "appointment": form,
+            "confirmation": confirmation,
+            "message": "Appointment booked successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Booking failed: {str(e)}")
 
 # CORS Configuration - SPECIFIC domains without wildcards
 origins = [
@@ -550,80 +569,6 @@ class ReportSummaryResponse(BaseModel):
     type: str
     error: Optional[str] = None
 
-# Implement soon....
-# # ======================================Specialist====================================================
-
-# from pydantic import BaseModel, Field
-# from typing import Optional, List
-
-# class HealthAssessmentRequest(BaseModel):
-#     symptoms: List[str] = Field(..., min_items=1, max_items=20, description="List of symptoms reported by the patient")
-#     duration: Optional[str] = Field("not specified", max_length=100, description="Duration of symptoms")
-#     severity: Optional[str] = Field("not specified", max_length=100, description="Severity of symptoms")
-#     medical_history: Optional[str] = Field(None, max_length=1000, description="Patient's medical history")
-#     patient_id: Optional[str] = Field(None, max_length=100, description="Unique patient identifier")
-
-# class CardiologyAssessmentRequest(HealthAssessmentRequest):
-#     heart_rate: Optional[int] = Field(None, ge=30, le=200, description="Patient's heart rate in beats per minute")
-
-# class DermatologyAssessmentRequest(HealthAssessmentRequest):
-#     affected_area: Optional[str] = Field(None, max_length=100, description="Body area affected by skin condition")
-
-# class NeurologyAssessmentRequest(HealthAssessmentRequest):
-#     neurological_triggers: Optional[List[str]] = Field(None, max_items=10, description="Triggers for neurological symptoms")
-
-# class PulmonologyAssessmentRequest(HealthAssessmentRequest):
-#     breathing_difficulty: Optional[str] = Field(None, max_length=100, description="Description of breathing issues")
-
-# class OphthalmologyAssessmentRequest(HealthAssessmentRequest):
-#     vision_changes: Optional[str] = Field(None, max_length=100, description="Description of vision changes")
-
-# class DentalAssessmentRequest(HealthAssessmentRequest):
-#     oral_symptoms: Optional[str] = Field(None, max_length=100, description="Description of oral health issues")
-
-# class AllergyImmunologyAssessmentRequest(HealthAssessmentRequest):
-#     allergen_exposure: Optional[List[str]] = Field(None, max_items=10, description="Known allergen exposures")
-
-# class PediatricsAssessmentRequest(HealthAssessmentRequest):
-#     child_age: Optional[int] = Field(None, ge=0, le=18, description="Age of the child in years")
-
-# class OrthopedicsAssessmentRequest(HealthAssessmentRequest):
-#     joint_or_bone: Optional[str] = Field(None, max_length=100, description="Specific joint or bone affected")
-
-# class MentalHealthAssessmentRequest(HealthAssessmentRequest):
-#     mood_description: Optional[str] = Field(None, max_length=100, description="Description of mood or mental state")
-
-# class EndocrinologyAssessmentRequest(HealthAssessmentRequest):
-#     hormone_symptoms: Optional[str] = Field(None, max_length=100, description="Symptoms related to hormonal changes")
-
-# class GastroenterologyAssessmentRequest(HealthAssessmentRequest):
-#     digestive_issue: Optional[str] = Field(None, max_length=100, description="Specific digestive system issue")
-
-# class RadiologyAssessmentRequest(HealthAssessmentRequest):
-#     imaging_type: Optional[str] = Field(None, max_length=100, description="Type of imaging (e.g., X-ray, MRI)")
-
-# class InfectiousDiseaseAssessmentRequest(HealthAssessmentRequest):
-#     infection_source: Optional[str] = Field(None, max_length=100, description="Suspected source of infection")
-
-# class VaccinationAdvisorRequest(BaseModel):
-#     age: Optional[int] = Field(None, ge=0, le=120, description="Patient's age")
-#     existing_conditions: Optional[List[str]] = Field(None, max_items=10, description="Existing medical conditions")
-#     vaccination_history: Optional[List[str]] = Field(None, max_items=10, description="Previous vaccinations")
-
-# class HealthAssessmentResponse(BaseModel):
-#     summary: str
-#     detailed_analysis: str
-#     recommendations: List[str]
-#     next_steps: List[str]
-#     confidence: float = Field(..., ge=0.0, le=1.0)
-#     disclaimer: str
-#     type: str
-#     timestamp: str
-#     success: bool
-
-# # ======================================Specialist====================================================
-
-
 #-----------------------FDA------------------------- #
 
 @app.get("/api/test/fda-drug")
@@ -872,312 +817,7 @@ async def report_summarize(
             }
         )
 
-# # Implement soon
-# # ======================================Specialist====================================================
-# # Append these routes to your existing main.py
 
-
-# # Specialist routes
-# @app.post("/api/health/cardiology", response_model=HealthAssessmentResponse)
-# async def cardiology_assessment(request: CardiologyAssessmentRequest):
-#     """Analyze heart health using the cardiology_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following heart-related symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Heart Rate: {request.heart_rate or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "cardiology"}
-#         result = await run_agent_with_thinking(cardiology_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Cardiology assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze cardiology symptoms")
-
-# @app.post("/api/health/dermatology", response_model=HealthAssessmentResponse)
-# async def dermatology_assessment(request: DermatologyAssessmentRequest):
-#     """Analyze skin conditions using the dermatology_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following skin-related symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Affected Area: {request.affected_area or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "dermatology"}
-#         result = await run_agent_with_thinking(dermatology_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Dermatology assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze dermatology symptoms")
-
-# @app.post("/api/health/neurology", response_model=HealthAssessmentResponse)
-# async def neurology_assessment(request: NeurologyAssessmentRequest):
-#     """Analyze neurological symptoms using the neurology_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following neurological symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Triggers: {', '.join(request.neurological_triggers) if request.neurological_triggers else 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "neurology"}
-#         result = await run_agent_with_thinking(neurology_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Neurology assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze neurology symptoms")
-
-# @app.post("/api/health/pulmonology", response_model=HealthAssessmentResponse)
-# async def pulmonology_assessment(request: PulmonologyAssessmentRequest):
-#     """Analyze respiratory health using the pulmonology_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following respiratory symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Breathing Difficulty: {request.breathing_difficulty or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "pulmonology"}
-#         result = await run_agent_with_thinking(pulmonology_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Pulmonology assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze pulmonology symptoms")
-
-# @app.post("/api/health/ophthalmology", response_model=HealthAssessmentResponse)
-# async def ophthalmology_assessment(request: OphthalmologyAssessmentRequest):
-#     """Analyze eye health using the ophthalmology_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following eye-related symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Vision Changes: {request.vision_changes or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "ophthalmology"}
-#         result = await run_agent_with_thinking(ophthalmology_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Ophthalmology assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze ophthalmology symptoms")
-
-# @app.post("/api/health/dental", response_model=HealthAssessmentResponse)
-# async def dental_assessment(request: DentalAssessmentRequest):
-#     """Analyze oral health using the dental_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following oral health symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Oral Symptoms: {request.oral_symptoms or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "dental"}
-#         result = await run_agent_with_thinking(dental_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Dental assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze dental symptoms")
-
-# @app.post("/api/health/allergy-immunology", response_model=HealthAssessmentResponse)
-# async def allergy_immunology_assessment(request: AllergyImmunologyAssessmentRequest):
-#     """Analyze allergy and immune system issues using the allergy_immunology_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following allergy-related symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Allergen Exposure: {', '.join(request.allergen_exposure) if request.allergen_exposure else 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "allergy_immunology"}
-#         result = await run_agent_with_thinking(allergy_immunology_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Allergy & Immunology assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze allergy symptoms")
-
-# @app.post("/api/health/pediatrics", response_model=HealthAssessmentResponse)
-# async def pediatrics_assessment(request: PediatricsAssessmentRequest):
-#     """Analyze child health using the pediatrics_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following child health symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Child Age: {request.child_age or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "pediatrics"}
-#         result = await run_agent_with_thinking(pediatrics_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Pediatrics assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze pediatrics symptoms")
-
-# @app.post("/api/health/orthopedics", response_model=HealthAssessmentResponse)
-# async def orthopedics_assessment(request: OrthopedicsAssessmentRequest):
-#     """Analyze bone and joint health using the orthopedics_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following orthopedic symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Affected Joint/Bone: {request.joint_or_bone or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "orthopedics"}
-#         result = await run_agent_with_thinking(orthopedics_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Orthopedics assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze orthopedics symptoms")
-
-# @app.post("/api/health/mental-health", response_model=HealthAssessmentResponse)
-# async def mental_health_assessment(request: MentalHealthAssessmentRequest):
-#     """Analyze mental wellness using the mental_health_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following mental health symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Mood Description: {request.mood_description or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "mental_health"}
-#         result = await run_agent_with_thinking(mental_health_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Mental Health assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze mental health symptoms")
-
-# @app.post("/api/health/endocrinology", response_model=HealthAssessmentResponse)
-# async def endocrinology_assessment(request: EndocrinologyAssessmentRequest):
-#     """Analyze hormone and metabolic health using the endocrinology_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following endocrine symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Hormone Symptoms: {request.hormone_symptoms or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "endocrinology"}
-#         result = await run_agent_with_thinking(endocrinology_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Endocrinology assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze endocrinology symptoms")
-
-# @app.post("/api/health/gastroenterology", response_model=HealthAssessmentResponse)
-# async def gastroenterology_assessment(request: GastroenterologyAssessmentRequest):
-#     """Analyze digestive system health using the gastroenterology_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following digestive symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Digestive Issue: {request.digestive_issue or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "gastroenterology"}
-#         result = await run_agent_with_thinking(gastroenterology_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Gastroenterology assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze gastroenterology symptoms")
-
-# @app.post("/api/health/radiology", response_model=HealthAssessmentResponse)
-# async def radiology_assessment(request: RadiologyAssessmentRequest):
-#     """Analyze medical imaging data using the radiology_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following radiology-related symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Imaging Type: {request.imaging_type or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "radiology"}
-#         result = await run_agent_with_thinking(radiology_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Radiology assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze radiology symptoms")
-
-# @app.post("/api/health/infectious-disease", response_model=HealthAssessmentResponse)
-# async def infectious_disease_assessment(request: InfectiousDiseaseAssessmentRequest):
-#     """Analyze infection and disease symptoms using the infectious_disease_agent."""
-#     try:
-#         symptoms_str = ", ".join(request.symptoms)
-#         prompt = f"""
-#         Analyze the following infectious disease symptoms:
-#         Symptoms: {symptoms_str}
-#         Duration: {request.duration}
-#         Severity: {request.severity}
-#         Infection Source: {request.infection_source or 'not specified'}
-#         Medical History: {request.medical_history or 'not provided'}
-#         """
-#         context = {"specialty": "infectious_disease"}
-#         result = await run_agent_with_thinking(infectious_disease_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Infectious Disease assessment error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to analyze infectious disease symptoms")
-
-# @app.post("/api/health/vaccination-advisor", response_model=HealthAssessmentResponse)
-# async def vaccination_advisor(request: VaccinationAdvisorRequest):
-#     """Provide vaccination guidance using the vaccination_advisor_agent."""
-#     try:
-#         prompt = f"""
-#         Provide vaccination recommendations:
-#         Age: {request.age or 'not specified'}
-#         Existing Conditions: {', '.join(request.existing_conditions) if request.existing_conditions else 'not specified'}
-#         Vaccination History: {', '.join(request.vaccination_history) if request.vaccination_history else 'not specified'}
-#         """
-#         context = {"specialty": "vaccination_advisor"}
-#         result = await run_agent_with_thinking(vaccination_advisor_agent, prompt, context)
-#         return JSONResponse(content=result)
-#     except Exception as e:
-#         logger.error(f"Vaccination advisor error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Failed to provide vaccination advice")
-
-
-# # ======================================Specialist====================================================
-        
 # -----------------End new one .....................#
 
 
@@ -1300,36 +940,6 @@ async def test_vector_search(query: str = "chest pain", specialty: str = "cardio
         }
     except Exception as e:
         return {"error": str(e), "vector_search_working": False}    
-
-# @app.post("/api/health/drug-interactions")
-# async def check_drug_interactions(input_data: DrugInteractionInput):
-#     """Check drug interactions with thorough analysis."""
-#     try:
-#         if not input_data.medications or len(input_data.medications) == 0:
-#             raise HTTPException(status_code=400, detail="At least one medication is required")
-        
-#             # Fetch FDA info for the first medication (as example)
-#         fda_data = None
-#         if input_data.medications:
-#             fda_data = await fetch_fda_drug_info(input_data.medications[0])
-        
-    
-#         context = {
-#             "medications": input_data.medications,
-#             "age": input_data.age,
-#             "gender": input_data.gender,
-#             "existing_conditions": input_data.existing_conditions,
-#             "other_medications": input_data.other_medications,
-#             "specialty": "drug"
-#         }
-        
-#         prompt = f"Check interactions for: {', '.join(input_data.medications)}"
-#         result = await run_agent_with_thinking(drug_interaction_agent, prompt, context)
-#         return result
-        
-#     except Exception as e:
-#         logger.error(f"Drug interaction error: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Service temporarily unavailable")
 
 
 @app.post("/api/health/drug-interactions")
@@ -1524,21 +1134,6 @@ async def get_sessions():
         }
     except Exception as e:
         logger.error(f"Get sessions error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve session data")
-
-# # if __name__ == "__main__":
-# #     import uvicorn
-# #     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-# import os
-
-# PORT = int(os.environ.get("PORT", 8080))
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
-
-
 
 # Run the application if executed directly
 if __name__ == "__main__":
