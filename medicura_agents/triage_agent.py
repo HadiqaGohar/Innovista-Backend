@@ -1,4 +1,7 @@
 from agents import Agent
+from guide_agent import Guidance_Agent
+# from equity import equity_agent
+
 
 def create_triage_agent(model):
     return Agent(
@@ -135,4 +138,5 @@ DISCLAIMER (use this exact text)
 "This triage assessment is for guidance only and does not replace professional medical evaluation. If you believe this is a medical emergency, call emergency services immediately."
 """,
         model=model,
+        handoffs=[Guidance_Agent]
     )
